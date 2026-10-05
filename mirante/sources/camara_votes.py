@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from .. import normalize as nz
 from ..provenance import Collector
+from .base import chunked
 
 VERSION = "1.0"
 
@@ -316,15 +317,26 @@ def _read(path) -> list[dict[str, Any]]:
 
 
 def _load_sessions(conn, rows: list[dict], parse) -> dict[str, int]:
+    """Grava as votações em lote e devolve {id da Câmara: id no banco}.
+
+    Em lote porque o pipeline roda longe do banco: um INSERT ... RETURNING
+    por votação eram milhares de idas e voltas de ~150 ms cada.
+    """
+    batch: list[dict] = []
+    seen: set[str] = set()
+    for raw in rows:
+        parse.rows_read += 1
+        row = session_row(raw)
+        if row is None or row["external_id"] in seen:
+            parse.rows_rejected += 1
+            continue
+        seen.add(row["external_id"])
+        batch.append({**row, "provenance_id": parse.id})
+
     ids: dict[str, int] = {}
     with conn.cursor() as cur:
-        for raw in rows:
-            parse.rows_read += 1
-            row = session_row(raw)
-            if row is None or row["external_id"] in ids:
-                parse.rows_rejected += 1
-                continue
-            cur.execute(
+        for chunk in chunked(batch, 2_000):
+            cur.executemany(
                 """
                 INSERT INTO vote_session (
                     house, external_id, voted_on, registered_at, body_acronym, approved,
@@ -332,12 +344,16 @@ def _load_sessions(conn, rows: list[dict], parse) -> dict[str, int]:
                 ) VALUES ('camara', %(external_id)s, %(voted_on)s, %(registered_at)s,
                           %(body_acronym)s, %(approved)s, %(yes_count)s, %(no_count)s,
                           %(other_count)s, %(description)s, %(source_url)s, %(provenance_id)s)
-                RETURNING id
                 """,
-                {**row, "provenance_id": parse.id},
+                chunk,
             )
-            ids[row["external_id"]] = cur.fetchone()["id"]
-            parse.rows_written += 1
+            cur.execute(
+                "SELECT id, external_id FROM vote_session WHERE house = 'camara' AND external_id = ANY(%s)",
+                ([r["external_id"] for r in chunk],),
+            )
+            for r in cur.fetchall():
+                ids[r["external_id"]] = r["id"]
+    parse.rows_written += len(batch)
     return ids
 
 
@@ -416,23 +432,29 @@ def _load_votes(
             latest[row["deputy_id"]] = row
 
     with conn.cursor() as cur:
-        for deputy_id, row in latest.items():
-            cur.execute(
-                """
-                INSERT INTO legislator
-                    (house, external_id, full_name, last_party, last_uf, photo_url, provenance_id)
-                VALUES ('camara', %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (house, external_id) DO UPDATE SET
-                    full_name = EXCLUDED.full_name,
-                    last_party = EXCLUDED.last_party,
-                    last_uf = EXCLUDED.last_uf,
-                    photo_url = COALESCE(EXCLUDED.photo_url, legislator.photo_url),
-                    provenance_id = EXCLUDED.provenance_id
-                RETURNING id
-                """,
-                (deputy_id, row["name"], row["party"], row["uf"], row["photo_url"], parse.id),
-            )
-            legislators[deputy_id] = cur.fetchone()["id"]
+        cur.executemany(
+            """
+            INSERT INTO legislator
+                (house, external_id, full_name, last_party, last_uf, photo_url, provenance_id)
+            VALUES ('camara', %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (house, external_id) DO UPDATE SET
+                full_name = EXCLUDED.full_name,
+                last_party = EXCLUDED.last_party,
+                last_uf = EXCLUDED.last_uf,
+                photo_url = COALESCE(EXCLUDED.photo_url, legislator.photo_url),
+                provenance_id = EXCLUDED.provenance_id
+            """,
+            [
+                (deputy_id, row["name"], row["party"], row["uf"], row["photo_url"], parse.id)
+                for deputy_id, row in latest.items()
+            ],
+        )
+        cur.execute(
+            "SELECT id, external_id FROM legislator WHERE house = 'camara' AND external_id = ANY(%s)",
+            (list(latest),),
+        )
+        for r in cur.fetchall():
+            legislators[r["external_id"]] = r["id"]
 
     matched = 0
     seen: set[tuple[int, int]] = set()

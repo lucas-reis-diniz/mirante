@@ -64,6 +64,9 @@ class EntityResolver:
         self._by_cpf: dict[str, int] = {}
         self._by_voter: dict[str, int] = {}
         self._by_cnpj: dict[str, int] = {}
+        # (company_id, kind) já gravados. Sem isto, cada linha de um arquivo
+        # com 200 mil despesas fazia um UPDATE de `kind` no banco.
+        self._kinds: set[tuple[int, str]] = set()
         self._cpf_voter_seen: dict[str, str] = {}
         self._rejected: set[str] = set()
         self.stats = ResolverStats()
@@ -77,9 +80,11 @@ class EntityResolver:
                     self._by_cpf[row["cpf"]] = row["id"]
                 if row["voter_id"]:
                     self._by_voter[row["voter_id"]] = row["id"]
-            cur.execute("SELECT id, cnpj FROM companies")
+            cur.execute("SELECT id, cnpj, kind FROM companies")
             for row in cur:
                 self._by_cnpj[row["cnpj"]] = row["id"]
+                for k in row["kind"] or []:
+                    self._kinds.add((row["id"], k))
             cur.execute("SELECT DISTINCT cpf FROM rejected_cpf")
             self._rejected = {r["cpf"] for r in cur}
 
@@ -203,12 +208,13 @@ class EntityResolver:
 
         existing = self._by_cnpj.get(cnpj)
         if existing is not None:
-            if kind:
+            if kind and (existing, kind) not in self._kinds:
                 with self.conn.cursor() as cur:
                     cur.execute(
                         "UPDATE companies SET kind = array(SELECT DISTINCT unnest(kind || %s::text[])) WHERE id = %s",
                         ([kind], existing),
                     )
+                self._kinds.add((existing, kind))
             return existing
 
         with self.conn.cursor() as cur:
@@ -225,8 +231,92 @@ class EntityResolver:
             company_id = cur.fetchone()["id"]
 
         self._by_cnpj[cnpj] = company_id
+        if kind:
+            self._kinds.add((company_id, kind))
         self.stats.companies_created += 1
         return company_id
+
+    # -- em lote ------------------------------------------------------------
+    #
+    # O pipeline roda longe do banco (GitHub nos EUA, Supabase em São Paulo):
+    # cada ida e volta custa ~150 ms. Resolver empresa a empresa, linha a
+    # linha, transformava a cota parlamentar de um ano em horas de espera.
+    # Os métodos abaixo resolvem um arquivo inteiro em poucas consultas; depois
+    # deles, `company()` e `person()` só batem no cache.
+
+    def prefetch_companies(
+        self, provenance_id: int, items: Iterable[tuple[str | None, str | None]], kind: str | None
+    ) -> None:
+        """Cria de uma vez as empresas que faltam e marca o `kind` de todas."""
+        names: dict[str, str | None] = {}
+        for raw_cnpj, name in items:
+            c = nz.cnpj(raw_cnpj)
+            if c and c not in names:
+                names[c] = nz.clean(name)
+        if not names:
+            return
+        missing = [c for c in names if c not in self._by_cnpj]
+        with self.conn.cursor() as cur:
+            for chunk in chunked(missing, BATCH):
+                cur.executemany(
+                    """
+                    INSERT INTO companies (cnpj, legal_name, kind, provenance_id)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (cnpj) DO NOTHING
+                    """,
+                    [(c, names[c], [kind] if kind else [], provenance_id) for c in chunk],
+                )
+                cur.execute(
+                    "SELECT id, cnpj FROM companies WHERE cnpj = ANY(%s)", (list(chunk),)
+                )
+                for row in cur.fetchall():
+                    self._by_cnpj[row["cnpj"]] = row["id"]
+            self.stats.companies_created += len(missing)
+
+            if kind:
+                ids = [self._by_cnpj[c] for c in names if (self._by_cnpj[c], kind) not in self._kinds]
+                for chunk in chunked(ids, BATCH):
+                    cur.execute(
+                        """
+                        UPDATE companies
+                        SET kind = array(SELECT DISTINCT unnest(kind || %s::text[]))
+                        WHERE id = ANY(%s) AND NOT (kind @> %s::text[])
+                        """,
+                        ([kind], list(chunk), [kind]),
+                    )
+                self._kinds.update((i, kind) for i in ids)
+
+    def prefetch_people_by_cpf(
+        self, provenance_id: int, items: Iterable[tuple[str | None, str | None]]
+    ) -> None:
+        """Cria de uma vez as pessoas que só têm CPF (sanções, por exemplo).
+
+        Mesma disciplina de `person()`: CPF inválido ou já descartado por
+        ambiguidade não vira pessoa, e nome vazio também não.
+        """
+        names: dict[str, str] = {}
+        for raw_cpf, name in items:
+            c = nz.cpf(raw_cpf)
+            canonical = nz.canonical_name(name)
+            if c and canonical and c not in self._rejected and c not in names:
+                names[c] = canonical
+        missing = [c for c in names if c not in self._by_cpf]
+        if not missing:
+            return
+        with self.conn.cursor() as cur:
+            for chunk in chunked(missing, BATCH):
+                cur.executemany(
+                    """
+                    INSERT INTO people (cpf, canonical_name, provenance_id)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    [(c, names[c], provenance_id) for c in chunk],
+                )
+                cur.execute("SELECT id, cpf FROM people WHERE cpf = ANY(%s)", (list(chunk),))
+                for row in cur.fetchall():
+                    self._by_cpf[row["cpf"]] = row["id"]
+        self.stats.people_created += len(missing)
 
     def report(self) -> dict:
         return {

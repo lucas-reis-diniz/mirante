@@ -90,7 +90,21 @@ INSERT INTO parliamentary_expense (
 def _load(conn, resolver: EntityResolver, stream, parse, year: int) -> None:
     rows: list[tuple] = []
 
-    for raw in read_csv(stream):
+    # Duas passadas: primeiro resolve todos os fornecedores do arquivo em lote,
+    # depois grava as despesas. Ver EntityResolver.prefetch_companies.
+    raws = list(read_csv(stream))
+    resolver.prefetch_companies(
+        parse.id,
+        (
+            (raw.get("TXTCNPJCPF") or raw.get("CNPJCPF"),
+             raw.get("TXTFORNECEDOR") or raw.get("FORNECEDOR"))
+            for raw in raws
+        ),
+        kind="contractor",
+    )
+    conn.commit()
+
+    for raw in raws:
         parse.rows_read += 1
 
         name = nz.clean(raw.get("TXNOMEPARLAMENTAR") or raw.get("NOME"))

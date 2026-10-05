@@ -91,10 +91,28 @@ INSERT INTO sanction (
 """
 
 
+def _name(raw: dict) -> str | None:
+    return nz.clean(
+        raw.get("NOME INFORMADO PELO ÓRGÃO SANCIONADOR")
+        or raw.get("RAZÃO SOCIAL - CADASTRO RECEITA")
+        or raw.get("NOME FANTASIA - CADASTRO RECEITA")
+    )
+
+
 def _load(conn, resolver: EntityResolver, stream, parse, registry: str) -> None:
     rows: list[tuple] = []
 
-    for raw in read_csv(stream):
+    # Duas passadas: pessoas e empresas do arquivo inteiro resolvidas em lote,
+    # depois as sanções. Ver EntityResolver.prefetch_companies.
+    raws = list(read_csv(stream))
+    docs = [(nz.cpf_or_cnpj(raw.get("CPF OU CNPJ DO SANCIONADO")), _name(raw)) for raw in raws]
+    resolver.prefetch_people_by_cpf(parse.id, ((cpf, name) for (cpf, _), name in docs if cpf))
+    resolver.prefetch_companies(
+        parse.id, ((cnpj, name) for (_, cnpj), name in docs if cnpj), kind="sanctioned"
+    )
+    conn.commit()
+
+    for raw in raws:
         parse.rows_read += 1
 
         name = nz.clean(
