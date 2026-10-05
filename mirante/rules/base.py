@@ -125,17 +125,32 @@ class RuleRun:
             self.flush()
 
     def flush(self) -> None:
+        """Grava o buffer em quatro consultas, não em três por sinal.
+
+        Os ids são reservados de uma vez na sequência para que atores e
+        evidências possam ser gravados em lote logo em seguida. Com o banco
+        longe do pipeline (~150 ms por ida e volta), gravar sinal a sinal
+        transformava alguns milhares de sinais em vários minutos.
+        """
         if not self._buffer:
             return
         with self.conn.cursor() as cur:
-            for sig in self._buffer:
-                cur.execute(
-                    """
-                    INSERT INTO signal
-                        (rule_run_id, rule, severity, headline, amount_cents, reference_year, detail)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
-                    """,
+            cur.execute(
+                "SELECT nextval(pg_get_serial_sequence('signal', 'id')) AS id "
+                "FROM generate_series(1, %s)",
+                (len(self._buffer),),
+            )
+            ids = [r["id"] for r in cur.fetchall()]
+
+            cur.executemany(
+                """
+                INSERT INTO signal
+                    (id, rule_run_id, rule, severity, headline, amount_cents, reference_year, detail)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
                     (
+                        signal_id,
                         self.id,
                         self.rule,
                         sig.severity,
@@ -143,35 +158,36 @@ class RuleRun:
                         sig.amount_cents,
                         sig.reference_year,
                         json.dumps(sig.detail, default=str),
-                    ),
-                )
-                signal_id = cur.fetchone()["id"]
-
-                if sig.actors:
-                    cur.executemany(
-                        """
-                        INSERT INTO signal_actor
-                            (signal_id, role, person_id, company_id, politician_history_id, display_name)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        [
-                            (
-                                signal_id,
-                                a.role,
-                                a.person_id,
-                                a.company_id,
-                                a.politician_history_id,
-                                a.display_name,
-                            )
-                            for a in sig.actors
-                        ],
                     )
+                    for signal_id, sig in zip(ids, self._buffer)
+                ],
+            )
+            actors = [
+                (signal_id, a.role, a.person_id, a.company_id, a.politician_history_id, a.display_name)
+                for signal_id, sig in zip(ids, self._buffer)
+                for a in sig.actors
+            ]
+            if actors:
+                cur.executemany(
+                    """
+                    INSERT INTO signal_actor
+                        (signal_id, role, person_id, company_id, politician_history_id, display_name)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    actors,
+                )
+            evidence = [
+                (signal_id, e.table_name, e.row_id, e.provenance_id, e.note)
+                for signal_id, sig in zip(ids, self._buffer)
+                for e in sig.evidence
+            ]
+            if evidence:
                 cur.executemany(
                     """
                     INSERT INTO signal_evidence (signal_id, table_name, row_id, provenance_id, note)
                     VALUES (%s, %s, %s, %s, %s)
                     """,
-                    [(signal_id, e.table_name, e.row_id, e.provenance_id, e.note) for e in sig.evidence],
+                    evidence,
                 )
         self.conn.commit()
         self.signals_emitted += len(self._buffer)
