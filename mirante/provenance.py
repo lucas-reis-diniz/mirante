@@ -142,9 +142,16 @@ class Collector:
 
     # -- coleta -------------------------------------------------------------
 
-    def fetch(self, url: str, filename: str | None = None) -> FetchedFile:
-        """Baixa e registra o arquivo. Devolve o objeto com o hash."""
-        fetched = download(url, self.work_dir, filename=filename)
+    def fetch(
+        self, url: str, filename: str | None = None, reuse_existing: bool = True
+    ) -> FetchedFile:
+        """Baixa e registra o arquivo. Devolve o objeto com o hash.
+
+        `reuse_existing=False` para arquivos que a fonte regera todo dia (as
+        votações do ano corrente): reaproveitar a cópia de ontem gravaria um
+        hash que não corresponde mais ao que está publicado.
+        """
+        fetched = download(url, self.work_dir, filename=filename, reuse_existing=reuse_existing)
         with self.conn.cursor() as cur:
             cur.execute(
                 """

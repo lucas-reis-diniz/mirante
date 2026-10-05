@@ -34,7 +34,8 @@ export default async function Home({
         <p>
           Candidaturas, dinheiro de campanha, cota parlamentar e sanções
           administrativas, cruzados por CPF e CNPJ. Procure por nome, CPF ou
-          título eleitoral.
+          título eleitoral. Para ver como cada deputado votou, vá em{" "}
+          <Link href="/deputados">Como votou</Link>.
         </p>
 
         <form className="query" action="/" method="get" role="search">

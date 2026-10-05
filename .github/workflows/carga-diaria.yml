@@ -1,0 +1,136 @@
+# Carga diária do Mirante.
+#
+# Roda nos servidores do GitHub, que alcançam Câmara e Portal da
+# Transparência (o ambiente de desenvolvimento com lista de domínios não
+# alcança). Cada coleta é rewrite-only: zera as tabelas que possui e
+# reconstrói a partir do arquivo publicado hoje.
+#
+# Requisito: o segredo MIRANTE_DATABASE_URL no repositório, com a string do
+# Session pooler do Supabase (usuário postgres.<ref>, porta 5432). A conexão
+# direta db.<ref>.supabase.co é só IPv6, e os runners do GitHub não têm IPv6.
+#
+# Efeito colateral bom: o Supabase gratuito pausa projeto parado por 7 dias.
+# Uma escrita por dia mantém o banco acordado.
+
+name: Carga diária
+
+on:
+  schedule:
+    # 09:17 UTC = 06:17 em Brasília. Minuto quebrado para fugir da fila do
+    # minuto zero, quando todo agendamento do GitHub dispara junto.
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Anos a carregar (separados por espaço)"
+        default: "2025 2026"
+        required: true
+
+permissions:
+  contents: write # para commitar o manifest.json
+
+concurrency:
+  group: carga-diaria
+  cancel-in-progress: false
+
+jobs:
+  carga:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MIRANTE_DATABASE_URL: ${{ secrets.MIRANTE_DATABASE_URL }}
+      YEARS: ${{ github.event.inputs.years || '2025 2026' }}
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Conferir o segredo
+        run: |
+          if [ -z "$MIRANTE_DATABASE_URL" ]; then
+            echo "::error::Segredo MIRANTE_DATABASE_URL não definido. Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar
+        run: pip install .
+
+      - name: Aplicar schema (idempotente)
+        run: mirante init-db
+
+      # Dado sintético nunca convive com dado real. Só faz algo na primeira
+      # execução, se a demonstração ainda estiver no banco.
+      - name: Remover demonstração
+        run: mirante purge-demo
+
+      # Cada fonte é independente: se uma estiver fora do ar, as outras
+      # rodam mesmo assim, e o job falha no final dizendo qual caiu.
+      - name: Votações da Câmara
+        id: votes
+        continue-on-error: true
+        run: mirante camara-votes --years $YEARS
+
+      - name: Cota parlamentar
+        id: ceap
+        continue-on-error: true
+        run: mirante camara-ceap --years $YEARS
+
+      - name: Sanções CEIS/CNEP
+        id: sanctions
+        continue-on-error: true
+        run: mirante transparencia-sanctions
+
+      - name: Regras
+        id: rules
+        continue-on-error: true
+        run: |
+          mirante rule-sanctioned-counterparty
+          mirante rule-disproportionate-expense
+
+      - name: Situação do banco
+        if: always()
+        run: mirante status
+
+      - name: Guardar relatórios da execução
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-${{ github.run_id }}
+          path: "*_report.json"
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # O manifesto vai para o git: o histórico público do repositório prova
+      # o que foi coletado, de onde e com qual hash, dia a dia.
+      - name: Commitar o manifesto
+        if: always()
+        run: |
+          if [ -f manifest.json ] && [ -n "$(git status --porcelain manifest.json)" ]; then
+            git config user.name "mirante-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add manifest.json
+            git commit -m "manifesto: coleta de $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash
+            git push
+          else
+            echo "manifesto sem mudança"
+          fi
+
+      - name: Resultado
+        if: always()
+        run: |
+          failed=""
+          [ "${{ steps.votes.outcome }}" = "success" ] || failed="$failed votações"
+          [ "${{ steps.ceap.outcome }}" = "success" ] || failed="$failed cota"
+          [ "${{ steps.sanctions.outcome }}" = "success" ] || failed="$failed sanções"
+          [ "${{ steps.rules.outcome }}" = "success" ] || failed="$failed regras"
+          if [ -n "$failed" ]; then
+            echo "::error::Falharam:$failed"
+            exit 1
+          fi
+          echo "tudo carregado"

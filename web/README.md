@@ -36,6 +36,13 @@ Na Vercel: importe o repositório, defina a raiz do projeto como `web`, e
 adicione `MIRANTE_DATABASE_URL` nas variáveis de ambiente. O build é o padrão
 do Next.
 
+Com Supabase, use a string do **Transaction pooler** (porta 6543) com o
+usuário `mirante_web.<ref>`, não a conexão direta: `db.<ref>.supabase.co` é
+só IPv6, e as funções da Vercel saem por IPv4. Atrás do pooler, o
+`lib/db.ts` não envia o parâmetro `options` (o pooler recusa); a mesma
+garantia de só-leitura e timeout vem de `ALTER ROLE` no servidor, ver
+`mirante/db/supabase_setup.sql`.
+
 ## Decisões que valem conhecer antes de mexer
 
 **Só-leitura em três camadas.** A conexão abre com

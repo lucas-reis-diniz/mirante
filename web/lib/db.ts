@@ -59,6 +59,8 @@ function sslSetting(url: string): false | { rejectUnauthorized: boolean } | unde
   return { rejectUnauthorized: false };
 }
 
+const BEHIND_POOLER = /pooler\.supabase\.com|:6543(\/|$)/i.test(connectionString ?? "");
+
 let pool: Pool | null = null;
 
 function getPool(): Pool {
@@ -72,7 +74,14 @@ function getPool(): Pool {
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
       ssl: sslSetting(connectionString),
-      options: "-c default_transaction_read_only=on -c statement_timeout=15000",
+      // Atrás de pooler (Supavisor, PgBouncer) o parâmetro de inicialização
+      // `options` é recusado ou se perde entre transações. Nesse caso a
+      // mesma garantia vem do servidor: o papel mirante_web tem
+      // default_transaction_read_only e statement_timeout definidos por
+      // ALTER ROLE, além de não ter privilégio de escrita algum.
+      ...(BEHIND_POOLER
+        ? {}
+        : { options: "-c default_transaction_read_only=on -c statement_timeout=15000" }),
     });
   }
   return pool;

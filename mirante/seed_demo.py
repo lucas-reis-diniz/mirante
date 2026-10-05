@@ -21,6 +21,7 @@ import json
 from datetime import date, datetime, timezone
 
 from .sources.base import EntityResolver
+from .sources.camara_votes import match_party_bloc
 
 SOURCE_SLUG = "demo"
 MARKER = "DEMONSTRAÇÃO — dados sintéticos, não correspondem a ninguém"
@@ -61,24 +62,78 @@ PEN_EXPENSES = [1_500, 2_000, 1_800, 2_200, 1_900, 2_500, 1_700, 2_100, 2_300, 1
                 2_400, 1_950, 2_050, 1_850, 2_150, 2_250, 1_750, 2_350, 1_650, 2_450]
 PEN_OUTLIER = 9_500_000  # R$ 95.000,00 em canetas — 40x+ a mediana
 
+# Votações fictícias. O deputado 999001 é o mesmo da cota parlamentar acima,
+# como na base real (o id da Câmara é o mesmo nas duas fontes). A terceira
+# votação tem voto contra a orientação do partido, para a interface ter o
+# caso a mostrar; a quarta é simbólica, sem voto individual.
+DEMO_DEPUTIES = [
+    ("999001", CANDIDATES[0][1], "PXX", "SP"),
+    ("999002", "DANIEL INVENTADO RIBEIRO", "PYY", "RJ"),
+]
+DEMO_SESSIONS = [
+    # (id, data, órgão, aprovada, sim, não, outros, descrição, tipo, número, ementa,
+    #  orientações {bancada: orientação}, votos {deputado: voto})
+    ("DEMO-1", date(2026, 3, 11), "PLEN", True, 401, 52, 2,
+     "Aprovado o Projeto de Lei nº 1.000, de 2026 (DEMONSTRAÇÃO).",
+     "PL", 1000, "Cria programa fictício de merenda escolar (DEMONSTRAÇÃO).",
+     {"PXX": "Sim", "Fdr PYY-PWW": "Sim", "Governo": "Sim"},
+     {"999001": "Sim", "999002": "Sim"}),
+    ("DEMO-2", date(2026, 5, 20), "PLEN", False, 180, 290, 5,
+     "Rejeitada a Proposta de Emenda à Constituição nº 7, de 2026 (DEMONSTRAÇÃO).",
+     "PEC", 7, "Altera regra fictícia de aposentadoria (DEMONSTRAÇÃO).",
+     {"PXX": "Não", "Fdr PYY-PWW": "Sim", "Governo": "Sim", "Oposição": "Não"},
+     {"999001": "Não", "999002": "Sim"}),
+    ("DEMO-3", date(2026, 6, 24), "PLEN", True, 300, 140, 0,
+     "Aprovado o Projeto de Lei Complementar nº 50, de 2026 (DEMONSTRAÇÃO).",
+     "PLP", 50, "Autoriza despesa fictícia durante evento esportivo (DEMONSTRAÇÃO).",
+     {"PXX": "Não", "Fdr PYY-PWW": "Liberado", "Governo": "Sim"},
+     {"999001": "Sim", "999002": "Abstenção"}),
+    ("DEMO-4", date(2026, 8, 5), "PLEN", True, None, None, None,
+     "Aprovada a Redação Final (votação simbólica, DEMONSTRAÇÃO).",
+     "PL", 1000, "Cria programa fictício de merenda escolar (DEMONSTRAÇÃO).",
+     {}, {}),
+]
+
+
+# Todas as tabelas de dado, de fonte e derivado. O conjunto sintético nunca
+# convive com dado real: carregar a demonstração zera tudo, e `purge` zera
+# tudo de novo antes da primeira coleta de verdade.
+TRUNCATE_ALL = """
+TRUNCATE campaign_expense_payment, campaign_expense, campaign_donation,
+         campaign_org, declared_asset, social_media, parliamentary_expense,
+         sanction, politician_history, mandate, earmark,
+         company_partner, company_registry, companies, people,
+         rejected_cpf, candidate_supplier_partner,
+         vote_cast, vote_orientation, vote_subject, vote_session, legislator,
+         signal_evidence, signal_actor, signal, rule_run,
+         parse, collection_file, collection, source
+RESTART IDENTITY CASCADE
+"""
+
+
+def purge(conn) -> bool:
+    """Apaga a demonstração, se ela estiver no banco. Devolve se apagou.
+
+    Necessário porque os crawlers são rewrite-only POR TABELA: a coleta de
+    votações zera só as tabelas de votação, e as candidaturas fictícias
+    ficariam ao lado de deputados reais. Misturar as duas coisas seria o pior
+    erro possível para uma ferramenta de conferência.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM source WHERE slug = %s", (SOURCE_SLUG,))
+        if cur.fetchone() is None:
+            return False
+        cur.execute(TRUNCATE_ALL)
+    conn.commit()
+    return True
+
 
 def run(conn) -> dict:
     """Carrega o conjunto sintético. Rewrite-only, como os crawlers de verdade."""
     report: dict = {"synthetic": True, "marker": MARKER}
 
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            TRUNCATE campaign_expense_payment, campaign_expense, campaign_donation,
-                     campaign_org, declared_asset, social_media, parliamentary_expense,
-                     sanction, politician_history, mandate, earmark,
-                     company_partner, company_registry, companies, people,
-                     rejected_cpf, candidate_supplier_partner,
-                     signal_evidence, signal_actor, signal, rule_run,
-                     parse, collection_file, collection, source
-            RESTART IDENTITY CASCADE
-            """
-        )
+        cur.execute(TRUNCATE_ALL)
 
         # -- proveniência sintética, marcada como tal --------------------------
         cur.execute(
@@ -331,12 +386,68 @@ def run(conn) -> dict:
              date(2026, 1, 1), date(2027, 12, 31), pid),
         )
 
+        # -- votações ---------------------------------------------------------
+        legislator_ids: dict[str, int] = {}
+        for ext, name, party, uf in DEMO_DEPUTIES:
+            cur.execute(
+                """
+                INSERT INTO legislator (house, external_id, full_name, last_party, last_uf, provenance_id)
+                VALUES ('camara', %s, %s, %s, %s, %s) RETURNING id
+                """,
+                (ext, name, party, uf, pid),
+            )
+            legislator_ids[ext] = cur.fetchone()["id"]
+        party_of = {ext: party for ext, _, party, _ in DEMO_DEPUTIES}
+        uf_of = {ext: uf for ext, _, _, uf in DEMO_DEPUTIES}
+
+        for (ext, voted_on, body, ok, yes, no, other, desc, kind, number, summary,
+             orientations, votes) in DEMO_SESSIONS:
+            cur.execute(
+                """
+                INSERT INTO vote_session (house, external_id, voted_on, registered_at, body_acronym,
+                    approved, yes_count, no_count, other_count, description, source_url, provenance_id)
+                VALUES ('camara', %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        'https://exemplo.invalid/demo/votacao', %s) RETURNING id
+                """,
+                (ext, voted_on, datetime.combine(voted_on, datetime.min.time(), timezone.utc),
+                 body, ok, yes, no, other, desc, pid),
+            )
+            session_id = cur.fetchone()["id"]
+            cur.execute(
+                """
+                INSERT INTO vote_subject (vote_session_id, proposition_id, kind, number, year,
+                                          title, summary, provenance_id)
+                VALUES (%s, %s, %s, %s, 2026, %s, %s, %s)
+                """,
+                (session_id, f"DEMO-{kind}-{number}", kind, number, f"{kind} {number}/2026",
+                 summary, pid),
+            )
+            for bloc, orientation in orientations.items():
+                cur.execute(
+                    "INSERT INTO vote_orientation (vote_session_id, bloc, orientation, provenance_id) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (session_id, bloc, orientation, pid),
+                )
+            for dep, vote in votes.items():
+                bloc = match_party_bloc(party_of[dep], orientations)
+                cur.execute(
+                    """
+                    INSERT INTO vote_cast (vote_session_id, legislator_id, party_acronym, uf, vote,
+                                           voted_at, party_bloc, party_orientation, provenance_id)
+                    VALUES (%s, %s, %s, %s, %s, NULL, %s, %s, %s)
+                    """,
+                    (session_id, legislator_ids[dep], party_of[dep], uf_of[dep], vote, bloc,
+                     orientations.get(bloc) if bloc else None, pid),
+                )
+
     conn.commit()
 
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT
+              (SELECT count(*) FROM vote_session)          AS votacoes,
+              (SELECT count(*) FROM vote_cast)             AS votos,
               (SELECT count(*) FROM politician_history)    AS candidaturas,
               (SELECT count(*) FROM campaign_donation)     AS doacoes,
               (SELECT count(*) FROM campaign_expense)      AS despesas,

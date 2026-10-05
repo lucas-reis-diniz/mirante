@@ -16,7 +16,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Mirante — dados públicos sobre política brasileira",
   description:
-    "Consulta a candidaturas, dinheiro de campanha e sanções, com a fonte de cada valor. Gera indícios, não conclusões.",
+    "Consulta a candidaturas, dinheiro de campanha, votações da Câmara e sanções, com a fonte de cada valor. Gera indícios, não conclusões.",
 };
 
 const FONT_HREF =
@@ -38,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </Link>
             <nav>
               <Link href="/">Busca</Link>
+              <Link href="/deputados">Como votou</Link>
               <Link href="/sinais">Sinais</Link>
               <a
                 href="https://github.com/lucas-reis-diniz/mirante"

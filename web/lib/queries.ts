@@ -261,8 +261,190 @@ export async function baseCounts() {
     UNION ALL SELECT 'doações de campanha',   count(*)::text FROM campaign_donation
     UNION ALL SELECT 'despesas de campanha',  count(*)::text FROM campaign_expense
     UNION ALL SELECT 'despesas de cota parlamentar', count(*)::text FROM parliamentary_expense
+    UNION ALL SELECT 'votações da Câmara',    count(*)::text FROM vote_session
+    UNION ALL SELECT 'votos individuais',     count(*)::text FROM vote_cast
     UNION ALL SELECT 'sanções CEIS/CNEP',     count(*)::text FROM sanction
     UNION ALL SELECT 'sinais de alerta',      count(*)::text FROM signal
+    `,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Votações
+// ---------------------------------------------------------------------------
+
+export type LegislatorHit = {
+  external_id: string;
+  full_name: string;
+  last_party: string | null;
+  last_uf: string | null;
+  votes: string;
+};
+
+export type LegislatorRecord = {
+  id: number;
+  external_id: string;
+  full_name: string;
+  last_party: string | null;
+  last_uf: string | null;
+  photo_url: string | null;
+  provenance_id: number;
+  votes: string;
+  plenary_votes: string;
+  against_party: string;
+  compared_to_party: string;
+  first_vote: string | null;
+  last_vote: string | null;
+};
+
+export type VoteRow = {
+  session_id: number;
+  voted_on: string;
+  body_acronym: string | null;
+  approved: boolean | null;
+  yes_count: number | null;
+  no_count: number | null;
+  description: string;
+  source_url: string | null;
+  subject_kind: string | null;
+  subject_proposition_id: string | null;
+  subject_number: number | null;
+  subject_year: number | null;
+  subject_title: string | null;
+  subject_summary: string | null;
+  vote: string;
+  party_acronym: string | null;
+  party_bloc: string | null;
+  party_orientation: string | null;
+  government_orientation: string | null;
+  provenance_id: number;
+};
+
+export type QuotaYear = {
+  reference_year: number;
+  total_cents: string;
+  entries: string;
+  provenance_id: number;
+};
+
+/**
+ * Lista de deputados com voto registrado, filtrável por UF e nome.
+ *
+ * A UF e o partido mostrados são os do voto mais recente coletado: deputado
+ * troca de partido, e a fonte do dia do voto é o voto, não um cadastro.
+ */
+export async function legislators({ uf, term }: { uf?: string; term?: string }) {
+  return tryQuery<LegislatorHit>(
+    `
+    SELECT l.external_id, l.full_name, l.last_party, l.last_uf,
+           (SELECT count(*)::text FROM vote_cast c WHERE c.legislator_id = l.id) AS votes
+    FROM legislator l
+    WHERE l.house = 'camara'
+      AND ($1::text IS NULL OR l.last_uf = $1)
+      AND ($2::text IS NULL OR l.full_name ILIKE '%' || $2 || '%')
+    ORDER BY unaccent(l.full_name)
+    LIMIT 600
+    `,
+    [uf ?? null, term ?? null],
+  );
+}
+
+/**
+ * Cabeçalho do deputado e os números que resumem o mandato.
+ *
+ * "Contra a orientação do partido" só conta voto em que a bancada do partido
+ * orientou Sim ou Não. Liberado, Obstrução e ausência de orientação ficam de
+ * fora — não dá para divergir de quem não pediu nada.
+ */
+export async function legislatorRecord(externalId: string) {
+  return tryQuery<LegislatorRecord>(
+    `
+    SELECT l.id, l.external_id, l.full_name, l.last_party, l.last_uf, l.photo_url, l.provenance_id,
+           count(c.id)::text AS votes,
+           count(c.id) FILTER (WHERE s.body_acronym = 'PLEN')::text AS plenary_votes,
+           count(c.id) FILTER (
+             WHERE c.party_orientation IN ('Sim', 'Não') AND c.vote <> c.party_orientation
+           )::text AS against_party,
+           count(c.id) FILTER (WHERE c.party_orientation IN ('Sim', 'Não'))::text AS compared_to_party,
+           min(s.voted_on)::text AS first_vote,
+           max(s.voted_on)::text AS last_vote
+    FROM legislator l
+    LEFT JOIN vote_cast c ON c.legislator_id = l.id
+    LEFT JOIN vote_session s ON s.id = c.vote_session_id
+    WHERE l.house = 'camara' AND l.external_id = $1
+    GROUP BY l.id
+    `,
+    [externalId],
+  );
+}
+
+/**
+ * Votos do deputado, do mais recente para o mais antigo.
+ *
+ * O objeto mostrado é o principal da votação: proposições de mérito (PEC,
+ * PLP, PL, MPV...) vêm antes de requerimento, destaque e parecer, que são
+ * etapas de tramitação. A ementa é texto da própria Câmara, sem edição.
+ */
+export async function votesOf(
+  legislatorId: number,
+  { plenaryOnly, againstPartyOnly }: { plenaryOnly: boolean; againstPartyOnly: boolean },
+) {
+  return tryQuery<VoteRow>(
+    `
+    SELECT s.id AS session_id, s.voted_on::text, s.body_acronym, s.approved,
+           s.yes_count, s.no_count, s.description, s.source_url,
+           subj.kind AS subject_kind, subj.proposition_id AS subject_proposition_id,
+           subj.number AS subject_number, subj.year AS subject_year,
+           subj.title AS subject_title, subj.summary AS subject_summary,
+           c.vote, c.party_acronym, c.party_bloc, c.party_orientation,
+           gov.orientation AS government_orientation,
+           c.provenance_id
+    FROM vote_cast c
+    JOIN vote_session s ON s.id = c.vote_session_id
+    LEFT JOIN LATERAL (
+      SELECT v.kind, v.proposition_id, v.number, v.year, v.title, v.summary
+      FROM vote_subject v
+      WHERE v.vote_session_id = s.id
+      ORDER BY CASE v.kind
+                 WHEN 'PEC' THEN 0 WHEN 'PLP' THEN 1 WHEN 'PL' THEN 2 WHEN 'MPV' THEN 3
+                 WHEN 'PLV' THEN 4 WHEN 'PDL' THEN 5 WHEN 'PRC' THEN 6 ELSE 9 END,
+               v.id
+      LIMIT 1
+    ) subj ON true
+    LEFT JOIN vote_orientation gov
+      ON gov.vote_session_id = s.id AND gov.bloc = 'Governo'
+    WHERE c.legislator_id = $1
+      AND (NOT $2::boolean OR s.body_acronym = 'PLEN')
+      AND (NOT $3::boolean OR (c.party_orientation IN ('Sim', 'Não') AND c.vote <> c.party_orientation))
+    ORDER BY s.voted_on DESC, s.registered_at DESC NULLS LAST, s.id DESC
+    LIMIT 300
+    `,
+    [legislatorId, plenaryOnly, againstPartyOnly],
+  );
+}
+
+/** Cota parlamentar do mesmo deputado: o id da Câmara é o mesmo nas duas bases. */
+export async function quotaOf(externalId: string) {
+  return tryQuery<QuotaYear>(
+    `
+    SELECT reference_year, sum(amount_cents)::text AS total_cents, count(*)::text AS entries,
+           min(provenance_id) AS provenance_id
+    FROM parliamentary_expense
+    WHERE house = 'camara' AND external_id = $1
+    GROUP BY reference_year
+    ORDER BY reference_year DESC
+    `,
+    [externalId],
+  );
+}
+
+export async function voteCoverage() {
+  return tryQuery<{ sessions: string; votes: string; first: string | null; last: string | null }>(
+    `
+    SELECT count(*)::text AS sessions,
+           (SELECT count(*)::text FROM vote_cast) AS votes,
+           min(voted_on)::text AS first, max(voted_on)::text AS last
+    FROM vote_session
     `,
   );
 }

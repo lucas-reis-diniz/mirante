@@ -63,3 +63,41 @@ export const SEVERITY_LABELS: Record<string, string> = {
   medium: "média",
   low: "baixa",
 };
+
+/**
+ * Sigla de proposição para leitura. Só as que aparecem como objeto principal
+ * de votação; o resto fica com a sigla da Câmara.
+ */
+export const PROPOSITION_KINDS: Record<string, string> = {
+  PEC: "Proposta de Emenda à Constituição",
+  PLP: "Projeto de Lei Complementar",
+  PL: "Projeto de Lei",
+  MPV: "Medida Provisória",
+  PLV: "Projeto de Lei de Conversão",
+  PDL: "Projeto de Decreto Legislativo",
+  PRC: "Projeto de Resolução",
+  REQ: "Requerimento",
+  PAR: "Parecer",
+};
+
+export function propositionLabel(
+  kind: string | null,
+  number: number | null,
+  year: number | null,
+): string | null {
+  if (!kind) return null;
+  const name = PROPOSITION_KINDS[kind] ?? kind;
+  if (number === null) return name;
+  return year ? `${name} ${number}/${year}` : `${name} nº ${number}`;
+}
+
+/** Página humana da proposição na Câmara (a URL da API devolve JSON). */
+export function camaraPropositionUrl(id: string | null): string | null {
+  if (!id || !/^\d+$/.test(id)) return null;
+  return `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${id}`;
+}
+
+export const UFS = [
+  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
+  "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+] as const;

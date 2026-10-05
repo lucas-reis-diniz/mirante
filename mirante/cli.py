@@ -1,9 +1,11 @@
 """CLI do Mirante.
 
     mirante init-db
+    mirante purge-demo
     mirante tse-candidates --years 2022 2026 --uf SP
     mirante tse-accounts --years 2022
     mirante camara-ceap --years 2025 2026
+    mirante camara-votes --years 2025 2026
     mirante transparencia-sanctions
     mirante rule-disproportionate-expense
     mirante rule-circular-donations
@@ -97,6 +99,15 @@ def cmd_seed_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_purge_demo(args: argparse.Namespace) -> int:
+    from . import seed_demo
+
+    with connect() as conn:
+        removed = seed_demo.purge(conn)
+    print("dados de demonstração apagados" if removed else "sem dados de demonstração no banco")
+    return 0
+
+
 def cmd_tse_candidates(args: argparse.Namespace) -> int:
     from .sources import tse_candidates
 
@@ -121,6 +132,15 @@ def cmd_camara_ceap(args: argparse.Namespace) -> int:
     with connect() as conn:
         report = camara_ceap.run(conn, years=args.years)
     _write_report("camara_ceap", report)
+    return 0
+
+
+def cmd_camara_votes(args: argparse.Namespace) -> int:
+    from .sources import camara_votes
+
+    with connect() as conn:
+        report = camara_votes.run(conn, years=args.years)
+    _write_report("camara_votes", report)
     return 0
 
 
@@ -177,6 +197,10 @@ def build_parser() -> argparse.ArgumentParser:
         "seed-demo",
         help="dados SINTÉTICOS para desenvolver a interface sem baixar o TSE",
     ).set_defaults(func=cmd_seed_demo)
+    sub.add_parser(
+        "purge-demo",
+        help="apaga os dados sintéticos, se houver — rodar antes da primeira coleta real",
+    ).set_defaults(func=cmd_purge_demo)
 
     p = sub.add_parser("tse-candidates", help="candidaturas 2014-2026 (TSE consulta_cand)")
     p.add_argument("--years", nargs="+", type=int)
@@ -191,6 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("camara-ceap", help="cota parlamentar da Câmara")
     p.add_argument("--years", nargs="+", type=int)
     p.set_defaults(func=cmd_camara_ceap)
+
+    p = sub.add_parser("camara-votes", help="votações da Câmara e o voto de cada deputado")
+    p.add_argument("--years", nargs="+", type=int)
+    p.set_defaults(func=cmd_camara_votes)
 
     p = sub.add_parser("transparencia-sanctions", help="CEIS e CNEP (snapshot)")
     p.add_argument("--snapshot", help="AAAA-MM-DD; padrão: hoje, andando para trás se faltar")

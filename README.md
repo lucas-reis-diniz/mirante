@@ -51,6 +51,7 @@ horas:
 
 ```bash
 mirante camara-ceap --years 2026        # cota parlamentar: base pequena, ciclo completo
+mirante camara-votes --years 2026       # votações e o voto de cada deputado
 mirante transparencia-sanctions         # CEIS/CNEP: snapshot do dia
 mirante rule-sanctioned-counterparty    # o primeiro cruzamento com valor real
 mirante status
@@ -114,6 +115,9 @@ commitado mais um build determinístico — não trigger, não hash chain.
 | `campaign_expense` | Cada despesa **contratada** (competência) | `tse-accounts` |
 | `campaign_expense_payment` | Quando o dinheiro de fato saiu (**caixa**) | `tse-accounts` |
 | `parliamentary_expense` | Cota parlamentar (CEAP), com link da nota fiscal | `camara-ceap` |
+| `vote_session` / `vote_subject` | Cada votação da Câmara e o que estava em votação (proposição, ementa) | `camara-votes` |
+| `vote_orientation` | O que cada partido, federação, bloco e o Governo orientaram | `camara-votes` |
+| `vote_cast` / `legislator` | O voto de cada deputado em votação nominal, com o partido do dia | `camara-votes` |
 | `sanction` | CEIS/CNEP: impedidos de contratar ou punidos por corrupção | `transparencia-sanctions` |
 | `declared_asset` | Bens declarados no registro da candidatura | `tse-assets` (a fazer) |
 | `earmark` | Emendas parlamentares: autor, beneficiário, empenhado/pago | `transparencia-earmarks` (a fazer) |
@@ -184,6 +188,7 @@ Identidade é **afirmação nossa**, não dado da fonte.
 | TSE — `consulta_cand` | Cadastro de candidaturas 2014–2026 | implementado |
 | TSE — prestação de contas | CNPJ de campanha, doações, despesas, pagamentos | implementado |
 | Câmara — CEAP | Cota parlamentar com link da nota fiscal | implementado |
+| Câmara — votações | Votações, objetos, orientações de bancada e votos nominais | implementado |
 | Portal da Transparência — CEIS/CNEP | Impedidos de contratar; punidos por corrupção | implementado |
 | TSE — `bem_candidato` | Bens declarados | a fazer |
 | TSE — `rede_social_candidato` | Redes sociais declaradas (obrigatório desde 2018) | a fazer |
@@ -200,6 +205,57 @@ sigilo. Sem identificação no índice, não dá para perguntar "todos os proces
 do candidato X" por essa via. A alternativa seria raspar 90+ tribunais sem
 padrão comum, que é exatamente o tipo de fonte não reprodutível que a
 disciplina de proveniência deste projeto rejeita.
+
+---
+
+## Como votou
+
+A cota parlamentar mostra como o mandato **gasta**. As votações mostram o que
+o mandato **faz**. O id do deputado na Câmara é o mesmo nas duas bases, então
+a ficha em `/deputados/<id>` põe as duas lado a lado sem resolver identidade.
+
+```bash
+mirante camara-votes --years 2025 2026
+```
+
+Quatro arquivos anuais por ano (`votacoes`, `votacoesObjetos`,
+`votacoesOrientacoes`, `votacoesVotos`), cada um com hash próprio na cadeia de
+proveniência. Três cuidados que estão no código e nos testes:
+
+- **Votação simbólica não tem voto individual.** Ela aparece em
+  `vote_session` sem linhas em `vote_cast`. Isso é informação (ninguém
+  registrou o próprio voto), não falha de coleta.
+- **"Diferente da orientação do partido"** só conta voto em que a bancada do
+  partido orientou Sim ou Não. A bancada pode ser o próprio partido, a
+  federação ou o bloco; quando o partido aparece em mais de uma, o código não
+  escolhe e não compara. `party_bloc` registra com qual bancada cada voto foi
+  comparado, para que a comparação seja conferível.
+- **Horário de Brasília vira UTC** com fuso de verdade, porque a série
+  histórica atravessa o horário de verão.
+
+A interface descreve, não julga: nenhum voto é verde ou vermelho, e votar
+diferente do partido aparece como fato, não como indício.
+
+---
+
+## Carga agendada
+
+[`.github/workflows/carga-diaria.yml`](.github/workflows/carga-diaria.yml)
+roda todo dia às 06:17 de Brasília nos servidores do GitHub: aplica o schema,
+apaga a demonstração se ela ainda estiver lá (`mirante purge-demo`), coleta
+votações, cota parlamentar e sanções, roda as regras e commita o
+`manifest.json`. Cada fonte é independente; se uma cair, as outras rodam e o
+job termina vermelho dizendo qual foi.
+
+Para ligar, um segredo no repositório (Settings > Secrets and variables >
+Actions): `MIRANTE_DATABASE_URL`, com a string do **Session pooler** do
+Supabase (botão Connect do projeto), usuário `postgres.<ref>`. A conexão
+direta `db.<ref>.supabase.co` é só IPv6 e os servidores do GitHub não têm
+IPv6. Para rodar na hora, sem esperar o dia seguinte: aba Actions > Carga
+diária > Run workflow.
+
+Configuração específica do Supabase (papel só-leitura da interface, RLS) em
+[`mirante/db/supabase_setup.sql`](mirante/db/supabase_setup.sql).
 
 ---
 
@@ -235,7 +291,10 @@ sinal sem evidência e severidade fora do vocabulário.
 
 O schema e as três regras foram verificados contra Postgres 16 real, com
 `seed-demo` carregado: 11 sinais gerados, 21 evidências, todas com cadeia de
-proveniência resolvida.
+proveniência resolvida. O crawler de votações foi rodado de ponta a ponta
+contra o mesmo banco com arquivos no formato da Câmara (votação sem id
+descartada, voto duplicado descartado, partido fora de bancada sem
+comparação).
 
 Para a interface:
 

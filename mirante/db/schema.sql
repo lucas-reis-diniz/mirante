@@ -447,7 +447,108 @@ CREATE TABLE IF NOT EXISTS candidate_supplier_partner (
 );
 
 -- ---------------------------------------------------------------------------
--- 7. VISÕES DE CONVENIÊNCIA
+-- 7. VOTAÇÕES
+-- ---------------------------------------------------------------------------
+-- O que o parlamentar FAZ com o mandato, não só o que gasta. Fonte: arquivos
+-- anuais de votações da Câmara (votacoes, votacoesObjetos, votacoesOrientacoes,
+-- votacoesVotos). Só votação NOMINAL tem voto individual; votação simbólica
+-- aparece em vote_session sem nenhuma linha em vote_cast, e isso é informação
+-- (ninguém registrou o próprio voto), não falha de coleta.
+
+-- Parlamentar como a Câmara o identifica (ideCadastro / id da API). É o mesmo
+-- identificador de parliamentary_expense.external_id, então cota e voto se
+-- cruzam sem resolução de identidade.
+CREATE TABLE IF NOT EXISTS legislator (
+    id              bigserial PRIMARY KEY,
+    house           text        NOT NULL CHECK (house IN ('camara', 'senado')),
+    external_id     text        NOT NULL,
+    full_name       text        NOT NULL,
+    last_party      text,                          -- partido no voto mais recente coletado
+    last_uf         text,
+    photo_url       text,
+    provenance_id   bigint      NOT NULL REFERENCES parse(id),
+    UNIQUE (house, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS legislator_name_idx ON legislator USING gin (full_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS legislator_uf_idx   ON legislator (house, last_uf);
+
+-- Uma votação: plenário ou comissão, nominal ou simbólica.
+CREATE TABLE IF NOT EXISTS vote_session (
+    id              bigserial PRIMARY KEY,
+    house           text        NOT NULL CHECK (house IN ('camara', 'senado')),
+    external_id     text        NOT NULL,          -- '2611313-31'
+    voted_on        date        NOT NULL,
+    registered_at   timestamptz,                   -- convertido de horário de Brasília para UTC
+    body_acronym    text,                          -- PLEN, CCJC...
+    approved        boolean,                       -- NULL quando a fonte não diz
+    yes_count       int,
+    no_count        int,
+    other_count     int,
+    description     text        NOT NULL,          -- texto da própria Câmara, sem edição
+    source_url      text,                          -- endpoint da API para esta votação
+    provenance_id   bigint      NOT NULL REFERENCES parse(id),
+    UNIQUE (house, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS vote_session_date_idx ON vote_session (voted_on DESC);
+CREATE INDEX IF NOT EXISTS vote_session_body_idx ON vote_session (body_acronym, voted_on DESC);
+
+-- O que estava em votação. Uma votação pode ter mais de um objeto
+-- (o parecer E a medida provisória a que ele se refere).
+CREATE TABLE IF NOT EXISTS vote_subject (
+    id              bigserial PRIMARY KEY,
+    vote_session_id bigint      NOT NULL REFERENCES vote_session(id) ON DELETE CASCADE,
+    proposition_id  text,                          -- id da proposição na Câmara
+    kind            text,                          -- PL, PLP, PEC, MPV, REQ...
+    number          int,
+    year            int,
+    title           text,                          -- 'PAR 25/2025 => MPV 1312/2025'
+    summary         text,                          -- ementa
+    provenance_id   bigint      NOT NULL REFERENCES parse(id)
+);
+
+CREATE INDEX IF NOT EXISTS vote_subject_session_idx ON vote_subject (vote_session_id);
+CREATE INDEX IF NOT EXISTS vote_subject_summary_idx ON vote_subject USING gin (summary gin_trgm_ops);
+
+-- Orientação de bancada: o que cada partido, federação, bloco, Governo,
+-- Maioria, Minoria e Oposição pediu que se votasse.
+CREATE TABLE IF NOT EXISTS vote_orientation (
+    id              bigserial PRIMARY KEY,
+    vote_session_id bigint      NOT NULL REFERENCES vote_session(id) ON DELETE CASCADE,
+    bloc            text        NOT NULL,          -- 'PL', 'Fdr PT-PCdoB-PV', 'Governo'
+    orientation     text        NOT NULL,          -- Sim, Não, Liberado, Obstrução...
+    provenance_id   bigint      NOT NULL REFERENCES parse(id)
+);
+
+CREATE INDEX IF NOT EXISTS vote_orientation_session_idx ON vote_orientation (vote_session_id);
+
+-- Voto individual em votação nominal.
+--
+-- party_bloc e party_orientation são DERIVADOS: qual bancada da lista de
+-- orientações contém o partido do parlamentar no dia do voto (o próprio
+-- partido, a federação ou o bloco). Ficam aqui, e não calculados na tela,
+-- para que a correspondência seja uma afirmação registrada e auditável —
+-- party_bloc diz exatamente com qual bancada o voto foi comparado. NULL
+-- quando nenhuma bancada contém o partido sem ambiguidade.
+CREATE TABLE IF NOT EXISTS vote_cast (
+    id                  bigserial PRIMARY KEY,
+    vote_session_id     bigint      NOT NULL REFERENCES vote_session(id) ON DELETE CASCADE,
+    legislator_id       bigint      NOT NULL REFERENCES legislator(id),
+    party_acronym       text,                      -- partido NO DIA do voto
+    uf                  text,
+    vote                text        NOT NULL,      -- Sim, Não, Abstenção, Obstrução, Artigo 17
+    voted_at            timestamptz,
+    party_bloc          text,
+    party_orientation   text,
+    provenance_id       bigint      NOT NULL REFERENCES parse(id),
+    UNIQUE (vote_session_id, legislator_id)
+);
+
+CREATE INDEX IF NOT EXISTS vote_cast_legislator_idx ON vote_cast (legislator_id, vote_session_id);
+
+-- ---------------------------------------------------------------------------
+-- 8. VISÕES DE CONVENIÊNCIA
 -- ---------------------------------------------------------------------------
 
 -- "De onde veio esta linha?" resolvido em um SELECT.

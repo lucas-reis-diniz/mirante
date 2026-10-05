@@ -574,3 +574,137 @@ summary.cell:hover {
   padding: 0.1rem 0.3rem;
 }
 
+
+/* ---------------------------------------------------------------- votações
+ * O voto é dado, não juízo: nenhuma cor aqui diz "certo" ou "errado". A
+ * divergência com o partido ganha um fio, não uma cor de alerta — votar
+ * diferente da bancada é informação sobre o mandato, não indício de nada. */
+
+.query--split select {
+  border: 0;
+  border-right: 1px solid var(--rule);
+  padding: 0 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.query--split select:focus {
+  outline: none;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+
+.filters a {
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  padding: 0.25rem 0.65rem;
+  text-decoration: none;
+  color: var(--slate);
+}
+
+.filters a[aria-current="page"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.votes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.vote {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.25rem 1.25rem;
+  padding: 1rem 0.2rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+  border-left: 3px solid transparent;
+}
+
+.vote__when {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--slate);
+}
+
+.vote__subject {
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+}
+
+.vote__summary {
+  margin: 0 0 0.35rem;
+  color: var(--slate);
+  max-width: 70ch;
+}
+
+.vote__desc {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--mute);
+  max-width: 70ch;
+}
+
+.vote__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.vote__facts div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.vote__facts dt {
+  color: var(--mute);
+}
+
+.vote__facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.vote--diverged {
+  border-left-color: var(--ink);
+}
+
+.vote__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.portrait {
+  float: right;
+  width: 4.5rem;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  margin: 0 0 0.5rem 1rem;
+}
+
+@media (max-width: 40rem) {
+  .vote {
+    grid-template-columns: 1fr;
+  }
+  .query--split select {
+    max-width: 6rem;
+  }
+}
