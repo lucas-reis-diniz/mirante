@@ -1,0 +1,576 @@
+/* Mirante — interface de auditoria.
+ *
+ * Partido de projeto: o aplicativo é um instrumento de conferência, não um
+ * painel. Então a estrutura visual é de LIVRO-RAZÃO: linhas de registro
+ * separadas por fio, cada valor com o recibo dele ao lado. Fios e molduras
+ * aqui delimitam registro, não decoram.
+ *
+ * Uma só superfamília (IBM Plex) em três vozes, atribuídas por semântica:
+ *   serif  -> títulos e a premissa do projeto
+ *   sans   -> interface e texto corrido
+ *   mono   -> identificadores, hashes e dinheiro (alinhamento de dígito importa)
+ *
+ * O verdigris (--stamp) é tinta de carimbo: usado SÓ para proveniência.
+ * Âmbar e carmim são funcionais — severidade de sinal. Nada de cor decorativa.
+ */
+
+:root {
+  --paper: #f3f6f7;
+  --card: #ffffff;
+  --ink: #11181f;
+  --slate: #4a5a66;
+  --mute: #74848f;
+  --rule: #d5dee2;
+  --rule-strong: #b3c0c7;
+
+  --stamp: #0f6f6a;
+  --stamp-wash: #e4f0ef;
+  --amber: #8a5a0d;
+  --amber-wash: #f7eedc;
+  --crimson: #952032;
+  --crimson-wash: #f8e5e7;
+
+  --shell: 68rem;
+  --step: 0.5rem;
+}
+
+:root:not([data-theme="light"]) {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e161c;
+    --card: #141f27;
+    --ink: #e8eef1;
+    --slate: #a3b4bf;
+    --mute: #7d8e99;
+    --rule: #26353f;
+    --rule-strong: #3a4c58;
+
+    --stamp: #55b8b0;
+    --stamp-wash: #11302f;
+    --amber: #d6a04a;
+    --amber-wash: #2f2414;
+    --crimson: #e2808d;
+    --crimson-wash: #33171c;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #0e161c;
+  --card: #141f27;
+  --ink: #e8eef1;
+  --slate: #a3b4bf;
+  --mute: #7d8e99;
+  --rule: #26353f;
+  --rule-strong: #3a4c58;
+
+  --stamp: #55b8b0;
+  --stamp-wash: #11302f;
+  --amber: #d6a04a;
+  --amber-wash: #2f2414;
+  --crimson: #e2808d;
+  --crimson-wash: #33171c;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-feature-settings: "cv05" 1;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--rule-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--stamp);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------- estrutura */
+
+.shell {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.topbar {
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+}
+
+.topbar__inner {
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+}
+
+.wordmark {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.topbar nav {
+  margin-left: auto;
+  display: flex;
+  gap: 1.1rem;
+  font-size: 0.9rem;
+  color: var(--slate);
+}
+
+footer.site {
+  margin-top: 4rem;
+  border-top: 1px solid var(--rule);
+  padding: 1.5rem 0 3rem;
+  color: var(--mute);
+  font-size: 0.85rem;
+}
+
+footer.site p {
+  max-width: 62ch;
+  margin: 0 0 0.5rem;
+}
+
+/* -------------------------------------------------------------------- busca */
+
+.lede {
+  padding: 3.5rem 0 2rem;
+}
+
+.lede h1 {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-size: clamp(1.75rem, 4.5vw, 2.6rem);
+  line-height: 1.18;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+  max-width: 28ch;
+}
+
+.lede p {
+  margin: 0;
+  max-width: 56ch;
+  color: var(--slate);
+}
+
+.query {
+  display: flex;
+  gap: 0;
+  margin: 2rem 0 0.75rem;
+  max-width: 34rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  background: var(--card);
+  overflow: hidden;
+}
+
+.query:focus-within {
+  border-color: var(--stamp);
+  box-shadow: 0 0 0 3px var(--stamp-wash);
+}
+
+.query input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.query input::placeholder {
+  color: var(--mute);
+}
+
+.query input:focus {
+  outline: none;
+}
+
+.query button {
+  border: 0;
+  border-left: 1px solid var(--rule);
+  padding: 0 1.1rem;
+  background: transparent;
+  color: var(--stamp);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.query button:hover {
+  background: var(--stamp-wash);
+}
+
+.hint {
+  color: var(--mute);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* -------------------------------------------------- livro-razão de registro
+ * A linha inteira é o <summary> do recibo: o alvo de clique é a linha toda, e
+ * o corpo aberto fica abaixo dela em largura cheia, sem grade externa para
+ * atravessar. */
+
+.ledger {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--card);
+  margin: 0 0 1.5rem;
+}
+
+.ledger > h2,
+.ledger > h3 {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+  font-family: "IBM Plex Sans", ui-sans-serif, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+.row {
+  border-bottom: 1px solid var(--rule);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+/* A célula: rótulo, valor e marcador, numa linha só. */
+.cell {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.6rem 0.9rem;
+}
+
+summary.cell {
+  list-style: none;
+  cursor: pointer;
+}
+
+summary.cell::-webkit-details-marker {
+  display: none;
+}
+
+summary.cell:hover {
+  background: var(--stamp-wash);
+}
+
+.receipt[open] > summary.cell {
+  background: var(--stamp-wash);
+}
+
+.cell__label {
+  color: var(--mute);
+  font-size: 0.9rem;
+}
+
+.cell__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cell__value--num {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 40rem) {
+  .cell {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cell__label {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+  }
+}
+
+/* ------------------------------------------------------- recibo (o destaque)
+ * <details> nativo: abre sem JavaScript, é acessível por teclado de graça e
+ * funciona com JS desligado. */
+
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--stamp);
+  border-radius: 999px;
+  color: var(--stamp);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Recibo ausente, deliberadamente destoante: um valor sem origem nesta
+   ferramenta é anomalia e deve chamar atenção, não passar como espaço vazio. */
+.chip--missing {
+  border-style: dashed;
+  border-color: var(--crimson);
+  color: var(--crimson);
+}
+
+.receipt__standalone {
+  list-style: none;
+  cursor: pointer;
+}
+
+.receipt__standalone::-webkit-details-marker {
+  display: none;
+}
+
+.receipt__body {
+  margin: 0 0.9rem 0.8rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--stamp-wash);
+  border-left: 2px solid var(--stamp);
+  border-radius: 0 3px 3px 0;
+  font-size: 0.8rem;
+}
+
+.receipt__body dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.3rem 0.75rem;
+}
+
+.receipt__body dt {
+  color: var(--slate);
+}
+
+.receipt__body dd {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.receipt__note {
+  margin: 0.6rem 0 0;
+  color: var(--slate);
+  font-size: 0.75rem;
+  max-width: 60ch;
+}
+
+@media (max-width: 40rem) {
+  .receipt__body dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+
+  .receipt__body dt {
+    margin-top: 0.4rem;
+  }
+}
+
+/* ------------------------------------------------------------- resultados */
+
+.results {
+  list-style: none;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.results li {
+  border-bottom: 1px solid var(--rule);
+}
+
+.results a {
+  display: block;
+  padding: 0.8rem 0.2rem;
+  text-decoration: none;
+}
+
+.results a:hover {
+  background: var(--card);
+}
+
+.results__name {
+  font-weight: 600;
+}
+
+.results__meta {
+  color: var(--slate);
+  font-size: 0.875rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1rem;
+}
+
+/* ---------------------------------------------------------------- cabeçalho
+ * de registro */
+
+.record {
+  padding: 2.5rem 0 1.5rem;
+}
+
+.record h1 {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-size: clamp(1.5rem, 3.5vw, 2.1rem);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin: 0 0 0.4rem;
+}
+
+.record__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  color: var(--slate);
+  font-size: 0.95rem;
+}
+
+/* ------------------------------------------------------------- severidade */
+
+.sev {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+
+.sev--high {
+  color: var(--crimson);
+  background: var(--crimson-wash);
+}
+
+.sev--medium {
+  color: var(--amber);
+  background: var(--amber-wash);
+}
+
+.sev--low {
+  color: var(--slate);
+  background: transparent;
+}
+
+/* -------------------------------------------------------------- advertência
+ * A ressalva não é rodapé. É condição de leitura de tudo o que está nesta
+ * página, então fica antes do conteúdo e não depois.                        */
+
+.caveat {
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: 0 3px 3px 0;
+  background: var(--card);
+  padding: 0.8rem 1rem;
+  margin: 0 0 1.5rem;
+  max-width: 64ch;
+}
+
+.caveat strong {
+  font-weight: 600;
+}
+
+.caveat p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--slate);
+}
+
+.caveat p + p {
+  margin-top: 0.4rem;
+}
+
+/* ------------------------------------------------------------------ tabela */
+
+.counts {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 2.5rem 0 0;
+}
+
+.counts th,
+.counts td {
+  text-align: left;
+  padding: 0.3rem 1.5rem 0.3rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.counts th {
+  font-weight: 400;
+  color: var(--mute);
+}
+
+.counts td {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- vazio */
+
+.empty {
+  padding: 2rem 0 1rem;
+  max-width: 56ch;
+}
+
+.empty h2 {
+  font-family: "IBM Plex Serif", Georgia, serif;
+  font-weight: 500;
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+
+.empty p {
+  margin: 0 0 0.5rem;
+  color: var(--slate);
+}
+
+.empty code {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.85rem;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.1rem 0.3rem;
+}
+

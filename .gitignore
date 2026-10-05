@@ -1,0 +1,21 @@
+# Dados baixados: reconstruíveis a partir do manifest.json. Nunca vão ao git.
+dados_tmp/
+*.zip
+*.csv
+
+# Segredos
+.env
+*.pem
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Relatórios de execução: gerados por cada rodada, não versionados.
+# O manifest.json SIM vai para o git — é a âncora de não repúdio.
+*_report.json
