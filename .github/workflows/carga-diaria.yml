@@ -107,19 +107,39 @@ jobs:
 
       # O manifesto vai para o git: o histórico público do repositório prova
       # o que foi coletado, de onde e com qual hash, dia a dia.
+      #
+      # O checkout é do commit em que a execução foi disparada, e o main pode
+      # ter andado desde então (outra coleta, outro commit). Rebase de JSON
+      # dá conflito, então o manifesto é MESCLADO: parte do main atual e
+      # acrescenta as coletas desta execução, que têm chave própria.
       - name: Commitar o manifesto
-        if: always()
+        if: success() || failure()
         run: |
-          if [ -f manifest.json ] && [ -n "$(git status --porcelain manifest.json)" ]; then
-            git config user.name "mirante-bot"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -f manifest.json ] || { echo "sem manifesto"; exit 0; }
+          cp manifest.json "$RUNNER_TEMP/manifest-desta-execucao.json"
+          git config user.name "mirante-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for tentativa in 1 2 3; do
+            git fetch -q origin main
+            git checkout -q -f -B main origin/main
+            python - "$RUNNER_TEMP/manifest-desta-execucao.json" <<'PY'
+          import json, pathlib, sys
+          ours = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          path = pathlib.Path("manifest.json")
+          base = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+          base.setdefault("collections", {}).update(ours.get("collections", {}))
+          base["updated_at"] = ours.get("updated_at", base.get("updated_at"))
+          path.write_text(json.dumps(base, indent=2, ensure_ascii=False), encoding="utf-8")
+          PY
+            if [ -z "$(git status --porcelain manifest.json)" ]; then
+              echo "manifesto sem mudança"; exit 0
+            fi
             git add manifest.json
-            git commit -m "manifesto: coleta de $(date -u +%Y-%m-%d)"
-            git pull --rebase --autostash
-            git push
-          else
-            echo "manifesto sem mudança"
-          fi
+            git commit -q -m "manifesto: coleta de $(date -u +%Y-%m-%d)"
+            git push -q origin main && exit 0
+            echo "push recusado, tentando de novo ($tentativa)"; sleep 5
+          done
+          exit 1
 
       - name: Resultado
         if: always()
