@@ -168,3 +168,43 @@ def iter_zip_text(
                 continue
             with zf.open(info) as raw:
                 yield info.filename, io.TextIOWrapper(raw, encoding=encoding, newline="")
+
+
+def sniff_text(sample: bytes) -> tuple[str, str]:
+    """(encoding, delimitador) de um CSV, a partir dos primeiros bytes.
+
+    As fontes não são consistentes nem entre si nem ao longo do tempo: o TSE
+    publica latin-1, a Câmara publica UTF-8 com BOM. Ler UTF-8 com BOM como
+    latin-1 transforma o BOM em "ï»¿" grudado no primeiro cabeçalho, e aí a
+    coluna do nome some sem erro nenhum: todas as linhas viram "descartadas".
+    """
+    if sample.startswith(b"\xef\xbb\xbf"):
+        encoding = "utf-8-sig"
+    else:
+        try:
+            # Corta no último byte completo para não acusar um caractere
+            # multibyte partido no fim da amostra.
+            sample.decode("utf-8")
+            encoding = "utf-8"
+        except UnicodeDecodeError as exc:
+            encoding = "utf-8" if exc.start >= len(sample) - 3 else "latin-1"
+    header = sample.split(b"\n", 1)[0]
+    delimiter = ";" if header.count(b";") >= header.count(b",") else ","
+    return encoding, delimiter
+
+
+def iter_zip_csv(path: Path, pattern: str | None = None) -> Iterator[tuple[str, io.TextIOWrapper, str]]:
+    """Como `iter_zip_text`, mas descobre encoding e delimitador de cada membro.
+
+    Devolve (nome, stream de texto, delimitador).
+    """
+    with zipfile.ZipFile(path) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            if pattern and pattern.lower() not in info.filename.lower():
+                continue
+            with zf.open(info) as raw:
+                encoding, delimiter = sniff_text(raw.read(64 * 1024))
+            with zf.open(info) as raw:
+                yield info.filename, io.TextIOWrapper(raw, encoding=encoding, newline=""), delimiter

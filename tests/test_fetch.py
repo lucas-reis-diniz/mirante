@@ -112,3 +112,34 @@ def test_user_agent_e_ascii():
 
     USER_AGENT.encode("ascii")
     httpx.Client().build_request("GET", "https://example.com", headers={"User-Agent": USER_AGENT})
+
+
+class TestSniff:
+    def test_utf8_com_bom(self):
+        from mirante.fetch import sniff_text
+
+        sample = "\ufeff\"txNomeParlamentar\";\"vlrDocumento\"\n\"José\";\"1.0\"\n".encode("utf-8")
+        assert sniff_text(sample) == ("utf-8-sig", ";")
+
+    def test_latin1(self):
+        from mirante.fetch import sniff_text
+
+        sample = "NM_CANDIDATO;SG_UF\nJOSÉ;SP\n".encode("latin-1")
+        assert sniff_text(sample) == ("latin-1", ";")
+
+    def test_virgula(self):
+        from mirante.fetch import sniff_text
+
+        assert sniff_text(b"a,b,c\n1,2,3\n")[1] == ","
+
+    def test_bom_nao_gruda_no_cabecalho(self, tmp_path):
+        from mirante.fetch import iter_zip_csv
+        from mirante.sources.base import read_csv
+
+        path = tmp_path / "Ano-2026.csv.zip"
+        content = "\ufeff\"txNomeParlamentar\";\"numMes\"\n\"Fulana\";\"3\"\n"
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("Ano-2026.csv", content.encode("utf-8"))
+        for _, stream, delimiter in iter_zip_csv(path, pattern=".csv"):
+            row = next(read_csv(stream, delimiter=delimiter))
+        assert row["TXNOMEPARLAMENTAR"] == "Fulana"

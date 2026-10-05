@@ -11,7 +11,7 @@ cota — é exatamente o tipo de cruzamento que justifica o projeto existir.
 
 from __future__ import annotations
 
-from ..fetch import iter_zip_text
+from ..fetch import iter_zip_csv, sniff_text
 from ..provenance import Collector
 from .. import normalize as nz
 from .base import EntityResolver, read_csv
@@ -59,16 +59,18 @@ def run(conn, years: list[int] | None = None) -> dict:
 
             written = 0
             if fetched.path.suffix == ".zip":
-                for inner_name, stream in iter_zip_text(fetched.path, pattern=".csv"):
+                for inner_name, stream, delimiter in iter_zip_csv(fetched.path, pattern=".csv"):
                     with collector.parse(fetched, inner_name, "camara.ceap.v1", year) as parse:
-                        _load(conn, resolver, stream, parse, year)
+                        _load(conn, resolver, stream, parse, year, delimiter)
                         written += parse.rows_written
             else:
-                with fetched.path.open("r", encoding="utf-8", newline="") as stream:
+                with fetched.path.open("rb") as fh:
+                    encoding, delimiter = sniff_text(fh.read(64 * 1024))
+                with fetched.path.open("r", encoding=encoding, newline="") as stream:
                     with collector.parse(
                         fetched, fetched.path.name, "camara.ceap.v1", year
                     ) as parse:
-                        _load(conn, resolver, stream, parse, year)
+                        _load(conn, resolver, stream, parse, year, delimiter)
                         written += parse.rows_written
 
             report["years"][year] = written
@@ -87,12 +89,12 @@ INSERT INTO parliamentary_expense (
 """
 
 
-def _load(conn, resolver: EntityResolver, stream, parse, year: int) -> None:
+def _load(conn, resolver: EntityResolver, stream, parse, year: int, delimiter: str = ";") -> None:
     rows: list[tuple] = []
 
     # Duas passadas: primeiro resolve todos os fornecedores do arquivo em lote,
     # depois grava as despesas. Ver EntityResolver.prefetch_companies.
-    raws = list(read_csv(stream))
+    raws = list(read_csv(stream, delimiter=delimiter))
     resolver.prefetch_companies(
         parse.id,
         (
@@ -145,6 +147,15 @@ def _load(conn, resolver: EntityResolver, stream, parse, year: int) -> None:
 
     if rows:
         parse.rows_written += _flush(conn, rows)
+
+    # Arquivo lido e nada aceito é mudança de formato da fonte, não um ano sem
+    # despesa. Falhar alto é melhor que gravar "ok" com zero linhas.
+    if parse.rows_read and not parse.rows_written:
+        header = list(raws[0].keys())[:8] if raws else []
+        raise RuntimeError(
+            f"CEAP {year}: {parse.rows_read:,} linhas lidas e nenhuma aceita. "
+            f"Cabeçalho lido: {header}"
+        )
 
 
 def _flush(conn, rows: list[tuple]) -> int:

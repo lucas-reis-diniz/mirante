@@ -166,6 +166,8 @@ def parse_date(value: str | None) -> date | None:
     if v is None:
         return None
     v = v.split("T")[0] if "T" in v and len(v) > 10 else v
+    # '2025-01-14 00:00:00': data com hora separada por espaço.
+    v = v.split(" ")[0] if len(v) > 10 and v[4:5] == "-" else v
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(v, fmt).date()
