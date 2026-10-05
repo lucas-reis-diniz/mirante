@@ -198,9 +198,18 @@ function VoteItem({
         {v.body_acronym === "PLEN" ? "Plenário" : v.body_acronym}
       </div>
       <div>
-        {subject && <p className="vote__subject">{subject}</p>}
-        {v.subject_summary && <p className="vote__summary">{v.subject_summary}</p>}
-        <p className="vote__desc">{v.description}</p>
+        {/* O que foi votado vem da descrição da própria Câmara. O "objeto"
+            registrado nem sempre é o item de mérito: numa votação de
+            substitutivo, o arquivo pode listar só o requerimento de urgência
+            que levou o projeto ao plenário. Por isso ele aparece como
+            contexto, abaixo, e não como título. */}
+        <p className="vote__subject">{v.description}</p>
+        {(subject || v.subject_summary) && (
+          <p className="vote__desc">
+            {subject && <>Proposição registrada: {subject}. </>}
+            {v.subject_summary}
+          </p>
+        )}
 
         <dl className="vote__facts">
           <div>
