@@ -102,3 +102,13 @@ class TestSignalDiscipline:
             evidence=[Evidence("campaign_expense", 42, 7)],
         )
         assert sig.evidence[0].row_id == 42
+
+
+def test_user_agent_e_ascii():
+    # Cabeçalho com acento derruba toda coleta antes da primeira requisição.
+    import httpx
+
+    from mirante.fetch import USER_AGENT
+
+    USER_AGENT.encode("ascii")
+    httpx.Client().build_request("GET", "https://example.com", headers={"User-Agent": USER_AGENT})

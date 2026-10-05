@@ -23,9 +23,14 @@ DEFAULT_TIMEOUT = httpx.Timeout(60.0, read=600.0)
 
 # Várias fontes públicas têm filtro anti-bot que devolve 403 para user-agent
 # de biblioteca. Identificar-se honestamente costuma bastar.
+#
+# SÓ ASCII. Cabeçalho HTTP não aceita acento: a primeira versão dizia
+# "transparência" e "públicos", e o httpx recusava montar a requisição com
+# UnicodeEncodeError antes de sair da máquina. Nenhum crawler conseguia baixar
+# nada, e os testes não pegavam porque nenhum deles monta requisição.
 USER_AGENT = os.environ.get(
     "MIRANTE_USER_AGENT",
-    "mirante/0.1 (projeto de transparência de dados públicos; contato via repositório)",
+    "mirante/0.1 (dados publicos sobre politica; https://github.com/lucas-reis-diniz/mirante)",
 )
 
 
