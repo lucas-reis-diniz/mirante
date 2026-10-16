@@ -3597,7 +3597,264 @@
           "rows_rejected": 0
         }
       ]
+    },
+    "camara-votes@53": {
+      "source": "camara",
+      "crawler": "camara-votes",
+      "crawler_version": "1.0",
+      "args": {
+        "years": [
+          2025,
+          2026
+        ]
+      },
+      "collected_at": "2026-10-16T13:59:18.273197+00:00",
+      "files": [
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoes/json/votacoes-2025.json",
+          "accessed_at": "2026-10-16T13:56:57.685253+00:00",
+          "sha256": "acdf8dafacf04045ef82389604119390e913f43b2039815674f253182166a153",
+          "byte_size": 15764369,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesObjetos/json/votacoesObjetos-2025.json",
+          "accessed_at": "2026-10-16T13:57:08.341108+00:00",
+          "sha256": "e43fcb98e4bfd962cf331a5dfa0020c13b35a2a1f0ce6633aa8b679dc586501f",
+          "byte_size": 69958577,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesOrientacoes/json/votacoesOrientacoes-2025.json",
+          "accessed_at": "2026-10-16T13:57:36.866432+00:00",
+          "sha256": "aac92438db999aafcbe63d14177695f5d894cca9292a9bacaa90b2f671466138",
+          "byte_size": 1882025,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesVotos/json/votacoesVotos-2025.json",
+          "accessed_at": "2026-10-16T13:57:42.092378+00:00",
+          "sha256": "fad2b2c1eb7a67871f2a8a82a578f8adf30aa6f5c1a9ba12cf68b4673b603869",
+          "byte_size": 107601948,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoes/json/votacoes-2026.json",
+          "accessed_at": "2026-10-16T13:58:34.981482+00:00",
+          "sha256": "154eda91e9051ddd79cc98fb7408ebc5caf18b1fbb834bc3edad30c7b969049a",
+          "byte_size": 8308106,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesObjetos/json/votacoesObjetos-2026.json",
+          "accessed_at": "2026-10-16T13:58:41.655024+00:00",
+          "sha256": "c41994892c533c87b4c0cf566242bd03d2df8740712e3212f819e8bc5d30618d",
+          "byte_size": 21383617,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesOrientacoes/json/votacoesOrientacoes-2026.json",
+          "accessed_at": "2026-10-16T13:58:53.773230+00:00",
+          "sha256": "cdf6b0cbb0662c84b8379fdf7908bdea0e2fe9a95287d93e31fb5e8bb6309dc7",
+          "byte_size": 749289,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        },
+        {
+          "url": "https://dadosabertos.camara.leg.br/arquivos/votacoesVotos/json/votacoesVotos-2026.json",
+          "accessed_at": "2026-10-16T13:58:58.689665+00:00",
+          "sha256": "74b953fbd8320fae7dc264fe596719529bab31a026cda4da7248aee39b52a7a6",
+          "byte_size": 32630217,
+          "http_status": 200,
+          "media_type": "application/json",
+          "inner_files": {}
+        }
+      ],
+      "parses": [
+        {
+          "inner_path": "votacoes-2025.json",
+          "parser": "camara.votacoes.v1",
+          "reference_year": 2025,
+          "rows_read": 13827,
+          "rows_written": 13827,
+          "rows_rejected": 0
+        },
+        {
+          "inner_path": "votacoesObjetos-2025.json",
+          "parser": "camara.votacoes_objetos.v1",
+          "reference_year": 2025,
+          "rows_read": 102040,
+          "rows_written": 102040,
+          "rows_rejected": 0
+        },
+        {
+          "inner_path": "votacoesOrientacoes-2025.json",
+          "parser": "camara.votacoes_orientacoes.v1",
+          "reference_year": 2025,
+          "rows_read": 4947,
+          "rows_written": 3742,
+          "rows_rejected": 1205
+        },
+        {
+          "inner_path": "votacoesVotos-2025.json",
+          "parser": "camara.votacoes_votos.v1",
+          "reference_year": 2025,
+          "rows_read": 175067,
+          "rows_written": 174646,
+          "rows_rejected": 421
+        },
+        {
+          "inner_path": "votacoes-2026.json",
+          "parser": "camara.votacoes.v1",
+          "reference_year": 2026,
+          "rows_read": 7439,
+          "rows_written": 7439,
+          "rows_rejected": 0
+        },
+        {
+          "inner_path": "votacoesObjetos-2026.json",
+          "parser": "camara.votacoes_objetos.v1",
+          "reference_year": 2026,
+          "rows_read": 32010,
+          "rows_written": 32010,
+          "rows_rejected": 0
+        },
+        {
+          "inner_path": "votacoesOrientacoes-2026.json",
+          "parser": "camara.votacoes_orientacoes.v1",
+          "reference_year": 2026,
+          "rows_read": 1904,
+          "rows_written": 1407,
+          "rows_rejected": 497
+        },
+        {
+          "inner_path": "votacoesVotos-2026.json",
+          "parser": "camara.votacoes_votos.v1",
+          "reference_year": 2026,
+          "rows_read": 53126,
+          "rows_written": 52660,
+          "rows_rejected": 466
+        }
+      ]
+    },
+    "camara-ceap@54": {
+      "source": "camara",
+      "crawler": "camara-ceap",
+      "crawler_version": "1.0",
+      "args": {
+        "years": [
+          2025,
+          2026
+        ]
+      },
+      "collected_at": "2026-10-16T14:01:26.146779+00:00",
+      "files": [
+        {
+          "url": "https://www.camara.leg.br/cotas/Ano-2025.csv.zip",
+          "accessed_at": "2026-10-16T13:59:26.310536+00:00",
+          "sha256": "bc9bf2f7e7922cee238c62c1951fada50305173845a9d681d16ea2e506392962",
+          "byte_size": 6901011,
+          "http_status": 200,
+          "media_type": "application/zip",
+          "inner_files": {
+            "Ano-2025.csv": "6140236032402238a4ba1023dab458c07416400d499e1a60a539d9fb81ba7618"
+          }
+        },
+        {
+          "url": "https://www.camara.leg.br/cotas/Ano-2026.csv.zip",
+          "accessed_at": "2026-10-16T14:00:42.356542+00:00",
+          "sha256": "2fad85ac996c94d48c851c0e1f7e8e613d83dbb71a3348e27edf509a631a7807",
+          "byte_size": 4352974,
+          "http_status": 200,
+          "media_type": "application/zip",
+          "inner_files": {
+            "Ano-2026.csv": "77a153c87c5ec9d00b43af61500e9e87ff7e1a8ede04bbaa6b814010c11a4f07"
+          }
+        }
+      ],
+      "parses": [
+        {
+          "inner_path": "Ano-2025.csv",
+          "parser": "camara.ceap.v1",
+          "reference_year": 2025,
+          "rows_read": 209080,
+          "rows_written": 209079,
+          "rows_rejected": 1
+        },
+        {
+          "inner_path": "Ano-2026.csv",
+          "parser": "camara.ceap.v1",
+          "reference_year": 2026,
+          "rows_read": 115927,
+          "rows_written": 115927,
+          "rows_rejected": 0
+        }
+      ]
+    },
+    "transparencia-sanctions@55": {
+      "source": "portal_transparencia",
+      "crawler": "transparencia-sanctions",
+      "crawler_version": "1.0",
+      "args": {
+        "snapshot": "2026-10-16"
+      },
+      "collected_at": "2026-10-16T14:01:57.893588+00:00",
+      "files": [
+        {
+          "url": "https://portaldatransparencia.gov.br/download-de-dados/ceis/20261015",
+          "accessed_at": "2026-10-16T14:01:35.129360+00:00",
+          "sha256": "c4d196c8d26134f82c5057464196c16d3fb96b1f7aa7d07aa41b57441d78f26a",
+          "byte_size": 3405917,
+          "http_status": 200,
+          "media_type": "application/x-zip-compressed",
+          "inner_files": {
+            "20261015_CEIS.csv": "72d1627f5ef904c94546ad40eaeea87d405542de1bd4a1909aabe435291edbac"
+          }
+        },
+        {
+          "url": "https://portaldatransparencia.gov.br/download-de-dados/cnep/20261015",
+          "accessed_at": "2026-10-16T14:01:54.480483+00:00",
+          "sha256": "938b86dfc200b5346fff7e472437787a2fd0c4ea11027a8fafad1a6c309b812a",
+          "byte_size": 206436,
+          "http_status": 200,
+          "media_type": "application/x-zip-compressed",
+          "inner_files": {
+            "20261015_CNEP.csv": "5791310b57ccd4fb064e9419716338f2afeb5bddd883d7861052349e87d8c3f9"
+          }
+        }
+      ],
+      "parses": [
+        {
+          "inner_path": "20261015_CEIS.csv",
+          "parser": "transparencia.ceis.v1",
+          "reference_year": 2026,
+          "rows_read": 23787,
+          "rows_written": 23787,
+          "rows_rejected": 0
+        },
+        {
+          "inner_path": "20261015_CNEP.csv",
+          "parser": "transparencia.cnep.v1",
+          "reference_year": 2026,
+          "rows_read": 1840,
+          "rows_written": 1840,
+          "rows_rejected": 0
+        }
+      ]
     }
   },
-  "updated_at": "2026-10-15T14:13:50.911811+00:00"
+  "updated_at": "2026-10-16T14:01:57.893621+00:00"
 }
